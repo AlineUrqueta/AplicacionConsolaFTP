@@ -411,7 +411,7 @@ namespace AplicacionConsolaSMS
                             return true;
                         }
 
-                        if (!long.TryParse(numero, out _) || numero.Length != 11)
+                        if (!long.TryParse(numero, out _))
                         {
                             IDapper.InsertarError(item, rutaArchivo, "Numero de celular incorrecto", connectionString, tamanoBase);
                             return true;
