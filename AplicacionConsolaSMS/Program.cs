@@ -450,7 +450,7 @@ namespace AplicacionConsolaSMS
 
             var Datafinal = new FormatoJson
             {
-                Subject = "Prueba Automatizacion",
+                Subject = "Alerta de campaña automática SMS",
                 From = dataTemplate.CorreoSalida,
                 Template = new TemplateJson
                 {
