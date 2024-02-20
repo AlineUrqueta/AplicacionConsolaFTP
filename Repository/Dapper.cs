@@ -1,5 +1,4 @@
-﻿using Azure;
-using Dapper;
+﻿using Dapper;
 using Domain;
 using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;

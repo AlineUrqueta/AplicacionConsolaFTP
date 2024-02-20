@@ -330,7 +330,7 @@ namespace AplicacionConsolaSMS
                 DateTime fecha = DateTime.Now;
                 string fechaFormateada = fecha.ToString("yyyyMMdd");
                 string horaFormateada = fecha.ToString("hhmmss");
-                string nombreArchivoFinal = $"solicitud_{datos.Cliente}{fechaFormateada}{horaFormateada}.csv";
+                string nombreArchivoFinal = $"solicitud_{datos.Cliente}_{fechaFormateada}_{horaFormateada}.csv";
 
                 string nombreBase = Path.GetFileNameWithoutExtension(rutaArchivoBase);
                 string rutaArchivoFinal = Path.Combine(rutaTemporal, nombreArchivoFinal);
