@@ -436,32 +436,39 @@ namespace AplicacionConsolaSMS
                     {
                         string linea = lineas[j];
                         int indicePrimeraComa = linea.IndexOf(',');
-                        string numero = linea.Substring(0, indicePrimeraComa);
-                        //string mensaje = linea.Substring(indicePrimeraComa + 1);
 
-                        if (linea.Contains(';'))
+                        if (indicePrimeraComa == -1)
                         {
-                            IDapper.InsertarError(item, rutaArchivo, "El campo presenta caracteres especiales", connectionString, tamanoBase);
+                            IDapper.InsertarError(item, rutaArchivo, "No se ha encontrado el separador coma" , connectionString, tamanoBase);
                             return true;
                         }
                         else
                         {
-                            if (numero.Contains(" "))
+                            string numero = linea.Substring(0, indicePrimeraComa);
+
+                            if (linea.Contains(';'))
                             {
-                                IDapper.InsertarError(item, rutaArchivo, "El numero presenta espacios", connectionString, tamanoBase);
+                                IDapper.InsertarError(item, rutaArchivo, "El campo presenta caracteres especiales", connectionString, tamanoBase);
                                 return true;
                             }
-
-                            if (!long.TryParse(numero, out _))
+                            else
                             {
-                                IDapper.InsertarError(item, rutaArchivo, "Numero de celular incorrecto", connectionString, tamanoBase);
-                                return true;
-                            }
+                                if (numero.Contains(" "))
+                                {
+                                    IDapper.InsertarError(item, rutaArchivo, "El numero presenta espacios", connectionString, tamanoBase);
+                                    return true;
+                                }
 
-                            
+                                if (!long.TryParse(numero, out _))
+                                {
+                                    IDapper.InsertarError(item, rutaArchivo, "Numero de celular incorrecto", connectionString, tamanoBase);
+                                    return true;
+                                }
+
+
+                            }
                         }
 
-                        
                     }
                 }
                 
