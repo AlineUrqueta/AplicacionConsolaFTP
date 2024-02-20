@@ -269,7 +269,7 @@ namespace AplicacionConsolaSMS
             string fechaFormateada = fechaActual.ToString("yyyyMMddHHmmss");
 
             string nombreBase = Path.GetFileNameWithoutExtension(rutaArchivoLocal);
-            string nombreArchivoFinal = $"{nombreBase}_{fechaFormateada}_temp.csv";
+            string nombreArchivoFinal = $"{nombreBase}_{fechaFormateada}_tmp.csv";
 
             if (!connectionSftp.Exists(rutaDestino))
             {
