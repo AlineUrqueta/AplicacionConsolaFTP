@@ -6,6 +6,7 @@ using Renci.SshNet.Sftp;
 using Repository;
 using System.Net.Http.Headers;
 using System.Text;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 using File = System.IO.File;
 
 namespace AplicacionConsolaSMS
@@ -176,14 +177,25 @@ namespace AplicacionConsolaSMS
         private static string ReemplazarDatosTemplateProcesados(string nombreArchivo,Configuracion_Cliente item,Templates dataTemplate, int tamanoBase,string mensaje)
         {
             string template = dataTemplate.Template;
-            TimeSpan horaInicio = item.InicioAutomatico ? DateTime.Now.TimeOfDay : item.HoraInicio;
+            DateTime fecha = DateTime.Now;
+            TimeSpan horaActual = new TimeSpan(fecha.Hour, fecha.Minute, fecha.Second);
+
+
+            if (item.InicioAutomatico == false)
+            {
+                if (item.HoraInicio < horaActual)
+                {
+                    fecha = fecha.AddDays(1);
+                    horaActual = item.HoraInicio;
+                }
+            }
 
             template = template.Replace("[[Usuario]]", item.Cliente);
             template = template.Replace("[[Rol]]", item.RolID);
             template = template.Replace("[[Nombre]]", nombreArchivo);
             template = template.Replace("[[Tamanio]]", tamanoBase.ToString());
-            template = template.Replace("[[Fecha]]", DateTime.Now.ToString("dd-MM-yyyy"));
-            template = template.Replace("[[Hora]]", horaInicio.ToString(@"hh\:mm"));
+            template = template.Replace("[[Fecha]]", fecha.ToString("dd-MM-yyyy"));
+            template = template.Replace("[[Hora]]", horaActual.ToString(@"hh\:mm"));
             template = template.Replace("[[Mensaje]]", mensaje);
             return template;
         }
@@ -325,19 +337,33 @@ namespace AplicacionConsolaSMS
                     mensaje = registros[0].Substring(indiceComa + 1); ;
                     envios = registros.Count;
                 }
-                
+
 
                 DateTime fecha = DateTime.Now;
-                string fechaFormateada = fecha.ToString("yyyyMMdd");
-                string horaFormateada = fecha.ToString("hhmmss");
-                string nombreArchivoFinal = $"solicitud_{datos.Cliente}_{fechaFormateada}_{horaFormateada}.csv";
+                TimeSpan horaActual = new TimeSpan(fecha.Hour, fecha.Minute, fecha.Second);
 
+
+                //TimeSpan horaInicio = datos.InicioAutomatico ? DateTime.Now.TimeOfDay : datos.HoraInicio;
+
+                if (datos.InicioAutomatico == false)
+                {
+                    if(datos.HoraInicio < horaActual)
+                    {
+                        fecha = fecha.AddDays(1);
+                        horaActual = datos.HoraInicio;
+                    }
+                }
+
+                string horaInicioFormateada = horaActual.ToString(@"hh\:mm");
+
+                string fechaFormateada = fecha.ToString("yyyyMMdd");
+                string horaFormateada = horaActual.ToString("hhmmss");
+
+
+                string nombreArchivoFinal = $"solicitud_{datos.Cliente}_{fechaFormateada}_{horaFormateada}.csv";
                 string nombreBase = Path.GetFileNameWithoutExtension(rutaArchivoBase);
                 string rutaArchivoFinal = Path.Combine(rutaTemporal, nombreArchivoFinal);
-
-                TimeSpan horaInicio = datos.InicioAutomatico ? DateTime.Now.TimeOfDay : datos.HoraInicio;
-                string horaInicioFormateada = horaInicio.ToString(@"hh\:mm");
-
+                
 
                 using (var writer = new StreamWriter(rutaArchivoFinal))
                 {
@@ -411,25 +437,31 @@ namespace AplicacionConsolaSMS
                         string linea = lineas[j];
                         int indicePrimeraComa = linea.IndexOf(',');
                         string numero = linea.Substring(0, indicePrimeraComa);
-                        string mensaje = linea.Substring(indicePrimeraComa + 1);
+                        //string mensaje = linea.Substring(indicePrimeraComa + 1);
 
-                        if (numero.Contains(" "))
-                        {
-                            IDapper.InsertarError(item, rutaArchivo, "El numero presenta espacios", connectionString, tamanoBase);
-                            return true;
-                        }
-
-                        if (!long.TryParse(numero, out _))
-                        {
-                            IDapper.InsertarError(item, rutaArchivo, "Numero de celular incorrecto", connectionString, tamanoBase);
-                            return true;
-                        }
-
-                        if (mensaje.Contains(';'))
+                        if (linea.Contains(';'))
                         {
                             IDapper.InsertarError(item, rutaArchivo, "El campo presenta caracteres especiales", connectionString, tamanoBase);
                             return true;
                         }
+                        else
+                        {
+                            if (numero.Contains(" "))
+                            {
+                                IDapper.InsertarError(item, rutaArchivo, "El numero presenta espacios", connectionString, tamanoBase);
+                                return true;
+                            }
+
+                            if (!long.TryParse(numero, out _))
+                            {
+                                IDapper.InsertarError(item, rutaArchivo, "Numero de celular incorrecto", connectionString, tamanoBase);
+                                return true;
+                            }
+
+                            
+                        }
+
+                        
                     }
                 }
                 
