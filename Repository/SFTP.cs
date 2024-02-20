@@ -275,38 +275,35 @@ namespace Repository
 
         public async Task MoverArchivo(string ruta, SftpFile archivo, SftpClient cliente)
         {
-            //ruta = ruta + "Procesados";
-
             try
             {
                 if (!cliente.Exists(ruta))
                 {
-                    Log.Error($"No existe la ruta {ruta} para poder mover los archivos.");
-                    await Console.Out.WriteLineAsync($"No existe la ruta {ruta} para poder mover los archivos.");
+                    await Console.Out.WriteLineAsync($"No existe la ruta {ruta} para poder mover los archivos. A continuación se creará la ruta.");
+                    cliente.CreateDirectory(ruta);
+                    await Task.Delay(1000);
+                }
+                
+                
+                if (cliente.Exists($"{ruta}/{archivo.Name}"))
+                {
+         
+                    await Console.Out.WriteLineAsync($"Archivo {archivo.Name} ya se encuentra en la ruta {ruta}");
                 }
                 else
                 {
-                    if (cliente.Exists($"{ruta}/{archivo.Name}"))
+                    archivo.MoveTo($"{ruta}/{archivo.Name}");
+                    await Task.Delay(1000);
+                    if (!cliente.Exists($"{ruta}/{archivo.Name}"))
                     {
-                        Log.Error($"Archivo {archivo.Name} ya se encuentra en la ruta {ruta}");
-                        await Console.Out.WriteLineAsync($"Archivo {archivo.Name} ya se encuentra en la ruta {ruta}");
+                        await Console.Out.WriteLineAsync($"Archivo {archivo.Name} no se pudo mover a la ruta {ruta}");
                     }
                     else
                     {
-                        archivo.MoveTo($"{ruta}/{archivo.Name}");
-                        await Task.Delay(300);
-                        if (!cliente.Exists($"{ruta}/{archivo.Name}"))
-                        {
-                            Log.Error($"Archivo {archivo.Name} no se pudo mover a la ruta {ruta}");
-                            await Console.Out.WriteLineAsync($"Archivo {archivo.Name} no se pudo mover a la ruta {ruta}");
-                        }
-                        else
-                        {
-                            Log.Information($"Se ha movido el archivo {archivo.Name} a la ruta {ruta}");
-                            await Console.Out.WriteLineAsync($"Se ha movido el archivo {archivo.Name} a la ruta {ruta}");
-                        }
+                        await Console.Out.WriteLineAsync($"Se ha movido el archivo {archivo.Name} a la ruta {ruta}");
                     }
                 }
+                
             }
             catch (Exception ex)
             {
