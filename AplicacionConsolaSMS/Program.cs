@@ -104,17 +104,22 @@ namespace AplicacionConsolaSMS
                                         
                                         if (archivoProcesar != null)
                                         {
+                                            string mensaje = "";
                                             if (connectionSftpInterno.IsConnected)
                                             {
-                                                string nombreArchivoBase = await ProcesarArchivoBase(archivo, credenciales.RutaBases, connectionSftpInterno);
-                                                string rutaArchivoBase = credenciales.RutaBases + nombreArchivoBase;
 
-                                                SftpFile archivoBase = await sftp.ObtenerArchivo(credenciales.RutaBases, nombreArchivoBase, connectionSftpInterno);
+                                                string rutaBase = item.RutaDestino + credenciales.RutaBases;
+                                                string rutaSolicitud = item.RutaDestino + credenciales.RutaSolicitudes;
+
+                                                string nombreArchivoBase = await ProcesarArchivoBase(archivo, rutaBase, connectionSftpInterno);
+                                                string rutaArchivoBase = rutaBase + nombreArchivoBase;
+
+                                                SftpFile archivoBase = await sftp.ObtenerArchivo(rutaBase, nombreArchivoBase, connectionSftpInterno);
 
                                                 await sftp.DescargarArchivo(rutaCarpetaTemp, archivoBase, connectionSftpInterno);
                                                 string rutaArchivoBaseTemporal = Path.Combine(rutaCarpetaTemp, archivoBase.Name);
 
-                                                await ProcesarArchivoSolicitud(rutaArchivoBaseTemporal, credenciales.RutaSolicitudes, connectionSftpInterno, item, rutaCarpetaTemp, nomArchivo);
+                                                 mensaje = await ProcesarArchivoSolicitud(rutaArchivoBaseTemporal, rutaSolicitud, connectionSftpInterno, item, rutaCarpetaTemp, nomArchivo);
 
                                                 await sftp.Desconectar(connectionSftpInterno);
 
@@ -123,7 +128,7 @@ namespace AplicacionConsolaSMS
                                             await sftp.MoverArchivo(rutaProcesados, archivoProcesar, connectionSftp);
 
 
-                                            string templateProcesado = ReemplazarDatosTemplateProcesados(archivoProcesar.Name, item, dataTemplatesProcesado, tamanoBase);
+                                            string templateProcesado = ReemplazarDatosTemplateProcesados(archivoProcesar.Name, item, dataTemplatesProcesado, tamanoBase, mensaje);
                                             string requestProcesado = CrearJson(dataTemplatesProcesado, templateProcesado);
                                             string responseProcesado = await RespuestaApi(requestProcesado);
                                             int id = await IDapper.InsertarMessageEmail(dataTemplatesError, requestProcesado);
@@ -168,7 +173,7 @@ namespace AplicacionConsolaSMS
 
         }
 
-        private static string ReemplazarDatosTemplateProcesados(string nombreArchivo,Configuracion_Cliente item,Templates dataTemplate, int tamanoBase)
+        private static string ReemplazarDatosTemplateProcesados(string nombreArchivo,Configuracion_Cliente item,Templates dataTemplate, int tamanoBase,string mensaje)
         {
             string template = dataTemplate.Template;
             TimeSpan horaInicio = item.InicioAutomatico ? DateTime.Now.TimeOfDay : item.HoraInicio;
@@ -179,7 +184,7 @@ namespace AplicacionConsolaSMS
             template = template.Replace("[[Tamanio]]", tamanoBase.ToString());
             template = template.Replace("[[Fecha]]", DateTime.Now.ToString("dd-MM-yyyy"));
             template = template.Replace("[[Hora]]", horaInicio.ToString(@"hh\:mm"));
-
+            template = template.Replace("[[Mensaje]]", mensaje);
             return template;
         }
 
@@ -288,7 +293,7 @@ namespace AplicacionConsolaSMS
             return nombreArchivoFinal;
         }
 
-        public static async Task ProcesarArchivoSolicitud(string rutaArchivoBase, string rutaDestino, SftpClient connectionSftp, Configuracion_Cliente datos,string rutaTemporal,string archivo)
+        public static async Task<string> ProcesarArchivoSolicitud(string rutaArchivoBase, string rutaDestino, SftpClient connectionSftp, Configuracion_Cliente datos,string rutaTemporal,string archivo)
         {
             ISFTP prueba = new SFTP();
 
@@ -358,13 +363,16 @@ namespace AplicacionConsolaSMS
                     var respuesta = prueba.SubirArchivo(connectionSftp, fileStream, rutaDestino, nombreArchivoFinal);
                     await Console.Out.WriteLineAsync(respuesta);
                 }
+
+                mensaje = mensaje.Trim('"');
+                return mensaje;
                
 
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error general: {ex.Message}");
-                
+                return "";
             }
             
         }
@@ -488,104 +496,6 @@ namespace AplicacionConsolaSMS
                 return "";
             }
         }
-
-        //public static bool VerificarArchivosCSV(string rutaArchivo, Configuracion_Cliente item, int tamanoBase)
-        //{
-        //    var configuration = new ConfigurationBuilder().
-        //        SetBasePath(Directory.GetCurrentDirectory())
-        //    .AddJsonFile("appsettings.json")
-        //    .Build();
-
-        //    var IDapper = new Dapperr();
-
-        //    var connectionString = configuration.GetConnectionString("PruebaConfiguracion");
-
-        //    if (item.TieneCabecera == false)
-        //    {
-        //        IDapper.InsertarError(item, rutaArchivo, "La base no posee cabecera", connectionString, tamanoBase);
-        //        return true;
-        //    }
-
-        //    if (Path.GetExtension(rutaArchivo) == ".csv")
-        //    {
-        //        string[] lineas = File.ReadAllLines(rutaArchivo);
-
-        //        if (lineas.Length > 0)
-        //        {
-        //            string formatoCabecera = lineas[0];
-        //            if (formatoCabecera != "PHONE_NUMBER,MESSAGE")
-        //            {
-        //                IDapper.InsertarError(item, rutaArchivo, "El formato de la cabecera no es correcto", connectionString, tamanoBase);
-        //                return true;
-        //            }
-
-        //            string[] cabecera = lineas[0].Split(',');
-
-        //            int cantidadColumnas = cabecera.Length;
-
-        //            for (int j = 1; j < lineas.Length; j++)
-        //            {
-
-        //                string linea = lineas[j];
-        //                string[] splitLinea = new string[cantidadColumnas];
-        //                int currentIndex = 0;
-        //                bool comillas = false;
-        //                StringBuilder construirCampo = new StringBuilder();
-
-        //                foreach (char c in linea)
-        //                {
-        //                    Console.WriteLine(linea);
-        //                    if (c == ',' && !comillas)
-        //                    {
-        //                        splitLinea[currentIndex] = construirCampo.ToString().Trim();
-        //                        construirCampo.Clear();
-        //                        currentIndex++;
-
-        //                        if (currentIndex >= cantidadColumnas)
-        //                            break;
-        //                    }
-        //                    else if (c == '"')
-        //                    {
-        //                        comillas = !comillas;
-        //                    }
-        //                    else
-        //                    {
-        //                        construirCampo.Append(c);
-        //                    }
-        //                }
-
-        //                if (currentIndex < cantidadColumnas)
-        //                {
-        //                    splitLinea[currentIndex] = construirCampo.ToString().Trim();
-        //                }
-
-
-        //                if (currentIndex > 0 && (!long.TryParse(splitLinea[0], out _) || splitLinea[0].Length != 11))
-        //                {
-        //                    IDapper.InsertarError(item, rutaArchivo, "El primer campo de la fila no es un número de 11 caracteres", connectionString, tamanoBase);
-        //                    return true;
-        //                }
-
-        //                for (int i = 1; i < currentIndex; i++)
-        //                {
-        //                    if (splitLinea[i].Contains(';'))
-        //                    {
-        //                        IDapper.InsertarError(item, rutaArchivo, "El campo presenta caracteres especiales", connectionString, tamanoBase);
-        //                        return true;
-        //                    }
-        //                }
-        //                if (splitLinea.Length > 0 && splitLinea[0].Contains(" "))
-        //                {
-        //                    IDapper.InsertarError(item, rutaArchivo, "El archivo presenta espacios", connectionString, tamanoBase);
-        //                    return true;
-        //                }
-        //            }
-        //        }
-        //    }
-
-        //    return false;
-        //}
-
 
 
     }
