@@ -356,8 +356,11 @@ namespace AplicacionConsolaSMS
 
                 string horaInicioFormateada = horaActual.ToString(@"hh\:mm");
 
-                string fechaFormateada = fecha.ToString("yyyyMMdd");
-                string horaFormateada = horaActual.ToString("hhmmss");
+                DateTime fechaActualArchivo = DateTime.Now;
+
+
+                string fechaFormateada = fechaActualArchivo.ToString("yyyyMMdd");
+                string horaFormateada = fechaActualArchivo.ToString("hhmmss");
 
 
                 string nombreArchivoFinal = $"solicitud_{datos.Cliente}_{fechaFormateada}_{horaFormateada}.csv";
