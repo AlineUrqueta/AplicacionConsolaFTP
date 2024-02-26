@@ -16,10 +16,12 @@ namespace AplicacionConsolaSMS
         static async Task Main(string[] args)
         {
             string appSettingsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "appsettings.json"));
+
             IConfigurationRoot configuration = null;
-            configuration = new ConfigurationBuilder()
-                   .AddJsonFile(appSettingsPath, optional: false, reloadOnChange: true)
-                   .Build();
+            configuration = new ConfigurationBuilder().
+                SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile(appSettingsPath, optional: false, reloadOnChange: true)
+                .Build();
 
             Credenciales_SFTP_Interno credenciales = new Credenciales_SFTP_Interno();
             configuration.GetSection("SftpInterno").Bind(credenciales);
