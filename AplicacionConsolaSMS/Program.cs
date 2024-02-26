@@ -16,7 +16,6 @@ namespace AplicacionConsolaSMS
         static async Task Main(string[] args)
         {
             string appSettingsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "appsettings.json"));
-
             IConfigurationRoot configuration = null;
             configuration = new ConfigurationBuilder().
                 SetBasePath(Directory.GetCurrentDirectory())
