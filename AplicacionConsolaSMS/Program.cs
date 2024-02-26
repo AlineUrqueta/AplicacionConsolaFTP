@@ -6,7 +6,6 @@ using Renci.SshNet.Sftp;
 using Repository;
 using System.Net.Http.Headers;
 using System.Text;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 using File = System.IO.File;
 
 namespace AplicacionConsolaSMS
@@ -16,10 +15,11 @@ namespace AplicacionConsolaSMS
         static readonly HttpClient client = new HttpClient();
         static async Task Main(string[] args)
         {
-            var configuration = new ConfigurationBuilder().
-                SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json")
-            .Build();
+            string appSettingsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "appsettings.json"));
+            IConfigurationRoot configuration = null;
+            configuration = new ConfigurationBuilder()
+                   .AddJsonFile(appSettingsPath, optional: false, reloadOnChange: true)
+                   .Build();
 
             Credenciales_SFTP_Interno credenciales = new Credenciales_SFTP_Interno();
             configuration.GetSection("SftpInterno").Bind(credenciales);

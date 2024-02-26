@@ -171,7 +171,7 @@ namespace Repository
                 parametros.Add("@DeliveryId", "");
                 parametros.Add("@Request", request);
                 parametros.Add("@Response", "");
-                parametros.Add("@IdUserEnvio", 999); //Id de Usuario que se configuró como usuario 
+                parametros.Add("@IdUserEnvio", 999); //Id de Usuario que se configuró como usuario automático
  
                 int id = await connection.ExecuteScalarAsync<int>("dbo.SP_MessageEmail", parametros, commandType: CommandType.StoredProcedure);
 
