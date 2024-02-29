@@ -1,4 +1,5 @@
 ﻿using Domain;
+using FluentFTP;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Renci.SshNet;
@@ -22,19 +23,35 @@ namespace AplicacionConsolaSMS
                 .AddJsonFile(appSettingsPath, optional: false, reloadOnChange: true)
                 .Build();
 
-            Credenciales_SFTP_Interno credenciales = new Credenciales_SFTP_Interno();
-            configuration.GetSection("SftpInterno").Bind(credenciales);
 
+            //Conexion BD
             var connectionString = configuration.GetConnectionString("PruebaConfiguracion");
-
             var connectionStringHttpGateway = configuration.GetConnectionString("HttpGateway");
-
-
 
             var IDapper = new Dapperr();
             IDapper.SetConnectionString(connectionString);
+            IDapper.SetConnectionStringHttpGateway(connectionStringHttpGateway);
+
+            //Templates
+            Templates dataTemplatesProcesado = await IDapper.GetTemplate(6);
+            Templates dataTemplatesError = await IDapper.GetTemplate(7);
+
+
+
+            //Config SFTP
             ISFTP sftp = new SFTP();
             SftpClient connectionSftp = null;
+            Credenciales_SFTP_Interno credenciales = new Credenciales_SFTP_Interno();
+            configuration.GetSection("SftpInterno").Bind(credenciales);
+
+            //Config FTP
+            IFTP ftp = new FTP();
+            FtpClient connectionFtp = null;
+            Credenciales_FTP_Interno credencialesFtp = new Credenciales_FTP_Interno();
+            configuration.GetSection("FTPInterno").Bind(credencialesFtp);
+
+
+            //Carpeta temporal
             string temp = configuration["CarpetaTemporal"];
             string rutaCarpetaTemp = await CrearCarpetaTemporal(temp);
 
@@ -67,9 +84,6 @@ namespace AplicacionConsolaSMS
 
                             foreach (string archivo in archivosTemporales)
                             {
-                                IDapper.SetConnectionStringHttpGateway(connectionStringHttpGateway); 
-                                Templates dataTemplatesProcesado = await IDapper.GetTemplate(6);
-                                Templates dataTemplatesError = await IDapper.GetTemplate(7);
                                 
                                 try
                                 {
@@ -79,7 +93,7 @@ namespace AplicacionConsolaSMS
                                     string nomArchivo = Path.GetFileName(archivo);
                                     SftpFile archivoProcesar = await sftp.ObtenerArchivo(item.RutaOrigen, nomArchivo, connectionSftp);
 
-                                    int tamanoBase = await ObtenerTamanoBase(archivo,item);
+                                    int tamanoBase = await ObtenerTamanoBase(archivo, item);
 
                                     if (VerificarArchivoCSVMod(archivo, item, tamanoBase) == true)
                                     {
@@ -103,7 +117,7 @@ namespace AplicacionConsolaSMS
                                     }
                                     else
                                     {
-                                        
+
                                         if (archivoProcesar != null)
                                         {
                                             string mensaje = "";
@@ -121,7 +135,7 @@ namespace AplicacionConsolaSMS
                                                 await sftp.DescargarArchivo(rutaCarpetaTemp, archivoBase, connectionSftpInterno);
                                                 string rutaArchivoBaseTemporal = Path.Combine(rutaCarpetaTemp, archivoBase.Name);
 
-                                                 mensaje = await ProcesarArchivoSolicitud(rutaArchivoBaseTemporal, rutaSolicitud, connectionSftpInterno, item, rutaCarpetaTemp, nomArchivo);
+                                                mensaje = await ProcesarArchivoSolicitud(rutaArchivoBaseTemporal, rutaSolicitud, connectionSftpInterno, item, rutaCarpetaTemp, nomArchivo);
 
                                                 await sftp.Desconectar(connectionSftpInterno);
 
@@ -152,21 +166,88 @@ namespace AplicacionConsolaSMS
                             await EliminarArchivosCarpetaTemporal(rutaCarpetaTemp);
 
                         }
+                        await sftp.Desconectar(connectionSftp);
 
                     }
                     else if (item.EsSFTP == false)
                     {
-                        Console.WriteLine("FTP");
+                        connectionFtp = ftp.ConnectarFTP(item.Server, item.Pass, item.User, item.Puerto);
+                        if (connectionFtp.IsConnected)
+                        {
+                            //Descargar archivos del FTP
+                            List<string> rutaArchivos = await RutaArchivosTempFTP(rutaCarpetaTemp, connectionFtp, item.RutaOrigen);
+                            foreach (string archivo in rutaArchivos)
+                            {
+      
+                                try
+                                {
+                                    FtpClient connectionFtpInterno= null;
+                                    connectionFtpInterno = ftp.ConnectarFTPInterno(credencialesFtp);
+                                    if (connectionFtpInterno.IsConnected)
+                                    {
+                                        string nomArchivo = Path.GetFileName(archivo);
+                                        int tamanoBase = await ObtenerTamanoBase(archivo, item);
+
+                                        string rutaArchivoOrigen = item.RutaOrigen + "/" + nomArchivo;
+                                        string rutaArchivoDestinoError = item.RutaOrigen + "/Errores/" + nomArchivo;
+                                        string rutaArchivoDestinoProcesados = item.RutaOrigen + "/Procesados/" + nomArchivo;
+
+
+                                        if (VerificarArchivoCSVMod(archivo, item, tamanoBase) == true) // Posee errores
+                                        {
+
+                                            await ftp.MoverArchivosCarpeta(rutaArchivoOrigen, rutaArchivoDestinoError, connectionFtp);
+                                            Errores_Procesamiento dataError = await IDapper.GetError();
+                                            string templateError = ReemplazarDatosTemplate(dataError, item, dataTemplatesError);
+                                            string request = CrearJson(dataTemplatesError, templateError);
+                                            string response = await RespuestaApi(request);
+                                            int id = await IDapper.InsertarMessageEmail(dataTemplatesError, request);
+                                            await IDapper.ActualizarMessageEmail(id, response);
+
+                                        }
+                                        else
+                                        {
+
+                                            string mensaje = ""; //Mensaje SMS Archivo de solicitud
+
+                                            string rutaBaseFTP = item.RutaDestino + credenciales.RutaBases;
+                                            string rutaSolicitudFTP = item.RutaDestino + credenciales.RutaSolicitudes;
+
+                                            string nombreArchivoBase = await ProcesarArchivoBaseFTP(archivo,rutaBaseFTP, connectionFtpInterno);
+
+                                            mensaje = await ProcesarArchivoSolicitudFTP( archivo, rutaSolicitudFTP, connectionFtpInterno, item, rutaCarpetaTemp);
+
+                                            await ftp.MoverArchivosCarpeta(rutaArchivoOrigen, rutaArchivoDestinoProcesados, connectionFtp);
+
+                                            string templateProcesado = ReemplazarDatosTemplateProcesados(nomArchivo, item, dataTemplatesProcesado, tamanoBase, mensaje);
+                                            string requestProcesado = CrearJson(dataTemplatesProcesado, templateProcesado);
+                                            string responseProcesado = await RespuestaApi(requestProcesado);
+                                            int id = await IDapper.InsertarMessageEmail(dataTemplatesError, requestProcesado);
+                                            await IDapper.ActualizarMessageEmail(id, responseProcesado);
+
+                                        }
+                                    }
+
+                                }
+                                catch (Exception ex)
+                                {
+                                    await Console.Out.WriteLineAsync(ex.Message);
+                                }
+
+                            }
+
+
+                            await EliminarArchivosCarpetaTemporal(rutaCarpetaTemp);
+                        }
+                        
                     }
                     else
                     {
                         Console.WriteLine("No se ha podido identificar el tipo de servidor: SFTP/FTP\n");
                     }
-
-
-                    await sftp.Desconectar(connectionSftp);
                 }
             }
+
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
@@ -276,7 +357,7 @@ namespace AplicacionConsolaSMS
 
         public static async Task<string> ProcesarArchivoBase(string rutaArchivoLocal, string rutaDestino, SftpClient connectionSftp)
         {
-            ISFTP prueba = new SFTP();
+            ISFTP sftp = new SFTP();
 
             DateTime fechaActual = DateTime.Now;
             string fechaFormateada = fechaActual.ToString("yyyyMMddHHmmss");
@@ -294,7 +375,7 @@ namespace AplicacionConsolaSMS
             {
                 using (FileStream fileStream = new FileStream(rutaArchivoLocal, FileMode.Open, FileAccess.Read))
                 {
-                    var respuesta = prueba.SubirArchivo(connectionSftp, fileStream, rutaDestino, nombreArchivoFinal);
+                    var respuesta = sftp.SubirArchivo(connectionSftp, fileStream, rutaDestino, nombreArchivoFinal);
                     await Console.Out.WriteLineAsync(respuesta);
                 }
 
@@ -308,7 +389,7 @@ namespace AplicacionConsolaSMS
 
         public static async Task<string> ProcesarArchivoSolicitud(string rutaArchivoBase, string rutaDestino, SftpClient connectionSftp, Configuracion_Cliente datos,string rutaTemporal,string archivo)
         {
-            ISFTP prueba = new SFTP();
+            ISFTP sftp = new SFTP();
 
             try
             {
@@ -343,9 +424,6 @@ namespace AplicacionConsolaSMS
                 DateTime fecha = DateTime.Now;
                 TimeSpan horaActual = new TimeSpan(fecha.Hour, fecha.Minute, fecha.Second);
 
-
-                //TimeSpan horaInicio = datos.InicioAutomatico ? DateTime.Now.TimeOfDay : datos.HoraInicio;
-
                 if (datos.InicioAutomatico == false)
                 {
                     if(datos.HoraInicio < horaActual)
@@ -355,13 +433,13 @@ namespace AplicacionConsolaSMS
                     }
                 }
 
-                string horaInicioFormateada = horaActual.ToString(@"hh\:mm");
+                string horaInicioFormateada = horaActual.ToString(@"HH\:mm");
 
                 DateTime fechaActualArchivo = DateTime.Now;
 
 
                 string fechaFormateada = fechaActualArchivo.ToString("yyyyMMdd");
-                string horaFormateada = fechaActualArchivo.ToString("hhmmss");
+                string horaFormateada = fechaActualArchivo.ToString("HHmmss");
 
 
                 string nombreArchivoFinal = $"solicitud_{datos.Cliente}_{fechaFormateada}_{horaFormateada}.csv";
@@ -390,7 +468,7 @@ namespace AplicacionConsolaSMS
 
                 using (FileStream fileStream = new FileStream(rutaArchivoFinal, FileMode.Open, FileAccess.Read))
                 {
-                    var respuesta = prueba.SubirArchivo(connectionSftp, fileStream, rutaDestino, nombreArchivoFinal);
+                    var respuesta = sftp.SubirArchivo(connectionSftp, fileStream, rutaDestino, nombreArchivoFinal);
                     await Console.Out.WriteLineAsync(respuesta);
                 }
 
@@ -541,11 +619,162 @@ namespace AplicacionConsolaSMS
         }
 
 
+        //FTP
+
+        public static async Task<List<string>> RutaArchivosTempFTP(string rutaCarpetaTemp,FtpClient ftpClient,string rutaOrigen)
+        {
+
+             List<string> rutasDescargadas = new List<string>(); 
+
+            try
+            {
+                ftpClient.Connect(); 
+
+                var archivos = ftpClient.GetListing(rutaOrigen);
+
+                foreach (var archivo in archivos)
+                {
+                    if (archivo.Type == FtpObjectType.File && Path.GetExtension(archivo.FullName) == ".csv")
+                    {
+                        string remoto = Path.Combine(rutaOrigen, archivo.Name);
+                        string local = Path.Combine(rutaCarpetaTemp, archivo.Name);
+                        ftpClient.DownloadFile(local, remoto);
+                        Console.WriteLine($"Archivo descargado: {local}");
+
+                        rutasDescargadas.Add(local);
+                    }
+                    
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al descargar archivos: {ex.Message}");
+            }
+            
+            return rutasDescargadas;
+        }
+
+        public static async Task<string> ProcesarArchivoBaseFTP(string archivo, string rutaBaseFTP, FtpClient client)
+        {
+
+            DateTime fechaActual = DateTime.Now;
+            string fechaFormateada = fechaActual.ToString("yyyyMMddHHmmss");
+
+            string nombreBase = Path.GetFileNameWithoutExtension(archivo);
+            string nombreArchivoFinal = $"{nombreBase}_{fechaFormateada}_tmp.csv";
+
+            try
+            {
+                bool directoryExists = await Task.Run(() => client.DirectoryExists(rutaBaseFTP));
+
+                if (!directoryExists)
+                {
+                    Console.WriteLine($"La ruta de destino {rutaBaseFTP} no existe en el servidor FTP.");
+                }
+                else
+                {
+                    await Task.Run(() => client.UploadFile(archivo, $"{rutaBaseFTP}/{nombreArchivoFinal}"));
+                    Console.WriteLine($"Archivo {archivo} subido exitosamente a {rutaBaseFTP} en el servidor FTP.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error general: {ex.Message}");
+            }
+
+            return nombreArchivoFinal;
+        }
+
+        public static async Task<string> ProcesarArchivoSolicitudFTP(string rutaArchivoBase, string rutaDestino, FtpClient client, Configuracion_Cliente datos, string rutaTemporal)
+        {
+            try
+            {
+                var registros = new List<string>();
+                string mensaje;
+                int envios = 0;
+
+                using (var reader = new StreamReader(rutaArchivoBase))
+                {
+                    string linea;
+                    while ((linea = await reader.ReadLineAsync()) != null)
+                    {
+                        registros.Add(linea);
+                        envios++;
+                    }
+                }
+                int indiceComa = registros[1].IndexOf(',');
+
+                if (datos.TieneCabecera)
+                {
+                    mensaje = registros[1].Substring(indiceComa + 1);
+                    envios = registros.Count - 1;
+                }
+                else
+                {
+                    mensaje = registros[0].Substring(indiceComa + 1); ;
+                    envios = registros.Count;
+                }
+
+                DateTime fecha = DateTime.Now;
+                TimeSpan horaActual = new TimeSpan(fecha.Hour, fecha.Minute, fecha.Second);
+
+                if (!datos.InicioAutomatico && datos.HoraInicio < horaActual)
+                {
+                    fecha = fecha.AddDays(1);
+                    horaActual = datos.HoraInicio;
+                }
+
+                string horaInicioFormateada = horaActual.ToString(@"hh\:mm");
+
+                DateTime fechaActualArchivo = DateTime.Now;
+
+                string fechaFormateada = fechaActualArchivo.ToString("yyyyMMdd");
+                string horaFormateada = fechaActualArchivo.ToString("HHmmss");
+
+                string nombreArchivoFinal = $"solicitud_{datos.Cliente}_{fechaFormateada}_{horaFormateada}.csv";
+                string rutaArchivoFinal = Path.Combine(rutaTemporal, nombreArchivoFinal);
+
+                using (var writer = new StreamWriter(rutaArchivoFinal))
+                {
+                    writer.WriteLine("id_cliente;id_producto;nombre;num_origen;mensaje;envios;fecha;hora;base;CentroCosto");
+                    string[] campos = new string[]
+                    {
+                    datos.IdCliente.ToString(),
+                    datos.IdProducto,
+                    Path.GetFileNameWithoutExtension(rutaArchivoBase),
+                    "0",
+                    mensaje,
+                    envios.ToString(),
+                    fecha.ToString("dd-MM-yyyy"),
+                    horaInicioFormateada,
+                    Path.GetFileName(rutaArchivoBase),
+                    "0"
+                        };
+                    await writer.WriteLineAsync(string.Join(";", campos));
+                }
+
+                await Task.Run(() => client.UploadFile(rutaArchivoFinal, $"{rutaDestino}/{nombreArchivoFinal}"));
+                Console.WriteLine($"Archivo {nombreArchivoFinal} subido exitosamente a {rutaDestino} en el servidor FTP.");
+
+                mensaje = mensaje.Trim('"');
+                return mensaje;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error general: {ex.Message}");
+                return "";
+            }
+        }
+
+
     }
 
-
-
 }
+
+
+
+
+
 
 
 
